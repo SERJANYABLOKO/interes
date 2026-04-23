@@ -1,4 +1,4 @@
-# 📁 bot.py (исправленная версия для Render)
+# 📁 bot.py (полностью исправленная версия)
 import os
 import logging
 import asyncio
@@ -147,7 +147,7 @@ async def handle_category_selection(update: Update, context: CallbackContext):
             message,
             parse_mode='Markdown',
             disable_web_page_preview=True,
-            reply_markup=get_main_keyword()
+            reply_markup=get_main_keyboard()  # ИСПРАВЛЕНО: было get_main_keyword()
         )
     else:
         await query.message.reply_text("😔 Не нашлось событий :(", reply_markup=get_main_keyboard())
