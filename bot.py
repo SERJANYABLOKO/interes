@@ -1,11 +1,11 @@
-# 📁 bot.py
+# 📁 bot.py (исправленная версия для Render)
 import os
 import logging
 import asyncio
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, CallbackContext
+from aiohttp import web
 import events_loader
-import json
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -55,8 +55,6 @@ async def start_command(update: Update, context: CallbackContext):
         "Или выбери категорию, чтобы сузить поиск.",
         reply_markup=get_main_keyboard()
     )
-    # Предзагружаем события в фоне
-    asyncio.create_task(preload_events())
 
 async def preload_events():
     global events_cache
@@ -65,7 +63,6 @@ async def preload_events():
 
 async def handle_message(update: Update, context: CallbackContext):
     """Обрабатывает текстовые сообщения и кнопки"""
-    user_id = update.effective_user.id
     text = update.message.text
     
     if text == "🎲 Мне скучно":
@@ -115,15 +112,6 @@ async def handle_category_selection(update: Update, context: CallbackContext):
     query = update.callback_query
     await query.answer()
     
-    category_codes = {
-        "concert": "concert",
-        "exhibition": "exhibition", 
-        "cinema": "cinema",
-        "theater": "theater",
-        "lecture": "lecture",
-        "all": None
-    }
-    
     callback_data = query.data
     category_code = callback_data.replace("cat_", "")
     
@@ -132,7 +120,6 @@ async def handle_category_selection(update: Update, context: CallbackContext):
         category_name = "все категории"
     else:
         events = await events_loader.load_events([category_code])
-        # Находим русское название категории
         category_names = {
             "concert": "концерты",
             "exhibition": "выставки",
@@ -160,10 +147,39 @@ async def handle_category_selection(update: Update, context: CallbackContext):
             message,
             parse_mode='Markdown',
             disable_web_page_preview=True,
-            reply_markup=get_main_keyboard()
+            reply_markup=get_main_keyword()
         )
     else:
         await query.message.reply_text("😔 Не нашлось событий :(", reply_markup=get_main_keyboard())
+
+# ======================
+# Webhook обработчики для aiohttp
+# ======================
+
+async def webhook_handler(request):
+    """Обработчик вебхуков от Telegram"""
+    try:
+        data = await request.json()
+        
+        # Получаем приложение из контекста
+        bot_app = request.app['bot_app']
+        
+        # Создаем update объект
+        update = Update.de_json(data, bot_app.bot)
+        
+        # Обрабатываем обновление
+        await bot_app.process_update(update)
+        
+        logger.info("✅ Webhook обработан")
+        return web.Response(text="OK", status=200)
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в webhook: {e}")
+        return web.Response(text="Error", status=500)
+
+async def health_handler(request):
+    """Health check handler"""
+    return web.Response(text="OK", status=200)
 
 # ======================
 # Создание приложения
@@ -177,7 +193,7 @@ def setup_application():
     return app
 
 # ======================
-# Запуск (как в твоем коде)
+# Запуск
 # ======================
 
 async def main():
@@ -187,6 +203,7 @@ async def main():
         logger.error("❌ TOKEN_BOT не задан")
         return
     
+    # Создаем приложение Telegram
     ptb_app = setup_application()
     await ptb_app.initialize()
     
@@ -194,20 +211,45 @@ async def main():
     asyncio.create_task(preload_events())
     
     if WEBHOOK_URL:
-        # Вебхук режим (как в твоем коде)
-        from aiohttp import web
-        webhook_url = f"{WEBHOOK_URL}/webhook"
-        await ptb_app.bot.set_webhook(url=webhook_url, drop_pending_updates=True)
-        logger.info(f"✅ Вебхук установлен: {webhook_url}")
+        logger.info(f"🌐 Режим вебхука на порту {PORT}")
         
+        # Устанавливаем вебхук
+        webhook_url = f"{WEBHOOK_URL}/webhook"
+        result = await ptb_app.bot.set_webhook(url=webhook_url, drop_pending_updates=True)
+        
+        if result:
+            logger.info(f"✅ Вебхук успешно установлен: {webhook_url}")
+        else:
+            logger.error("❌ Не удалось установить вебхук")
+            return
+        
+        # Настраиваем aiohttp сервер
         app = web.Application()
-        # ... (полный код вебхука как в твоем bot.py)
+        app['bot_app'] = ptb_app
+        app.router.add_post('/webhook', webhook_handler)
+        app.router.add_get('/health', health_handler)
+        app.router.add_get('/', health_handler)
+        
+        # Запускаем сервер
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', PORT)
+        await site.start()
+        
         logger.info(f"✅ Бот запущен на порту {PORT}")
+        logger.info(f"✅ Webhook URL: {webhook_url}")
+        
+        # Держим сервер запущенным
         await asyncio.Event().wait()
+        
     else:
+        logger.warning("⚠️ WEBHOOK_URL не указан, используем polling")
+        # Запускаем polling
         await ptb_app.start()
         await ptb_app.updater.start_polling()
         logger.info("✅ Бот запущен в режиме polling")
+        
+        # Держим бота запущенным
         while True:
             await asyncio.sleep(1)
 
