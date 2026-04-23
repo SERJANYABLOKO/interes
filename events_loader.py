@@ -1,6 +1,6 @@
 # 📁 events_loader.py
 # Модуль для загрузки событий из API KudaGo (Москва)
-
+import random  # добавь эту строку в начало файла
 import aiohttp
 import json
 import asyncio
@@ -97,7 +97,7 @@ def get_random_event(events: List[Dict]) -> Optional[Dict]:
     """Возвращает случайное событие из списка"""
     if not events:
         return None
-    import random
+    import random  # уже будет в начале файла
     return random.choice(events)
 
 async def load_events(categories: List[str] = None) -> List[Dict]:
