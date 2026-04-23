@@ -1,4 +1,4 @@
-# 📁 bot.py (полностью исправленная версия)
+# 📁 bot.py (с отладкой)
 import os
 import logging
 import asyncio
@@ -48,6 +48,7 @@ def get_categories_keyboard():
 
 async def start_command(update: Update, context: CallbackContext):
     """Приветствие и главное меню"""
+    logger.info(f"📱 Пользователь {update.effective_user.id} вызвал /start")
     await update.message.reply_text(
         "🎉 Привет! Я бот «Куда пойти?» в Москве!\n\n"
         "Я помогу тебе найти интересные события на сегодня и ближайшие дни.\n\n"
@@ -58,16 +59,25 @@ async def start_command(update: Update, context: CallbackContext):
 
 async def preload_events():
     global events_cache
+    logger.info("🔄 Начинаю загрузку событий...")
     events_cache = await events_loader.load_events()
-    logger.info(f"Предзагружено {len(events_cache)} событий")
+    logger.info(f"✅ Загружено {len(events_cache)} событий в кеш")
+    if len(events_cache) > 0:
+        # Выводим пример первого события для проверки
+        sample = events_cache[0]
+        logger.info(f"📋 Пример события: {sample.get('title', 'Нет названия')}")
 
 async def handle_message(update: Update, context: CallbackContext):
     """Обрабатывает текстовые сообщения и кнопки"""
+    user_id = update.effective_user.id
     text = update.message.text
+    logger.info(f"📨 Получено сообщение от {user_id}: {text}")
     
     if text == "🎲 Мне скучно":
+        logger.info(f"🎲 Пользователь {user_id} нажал «Мне скучно»")
         await handle_random_event(update, context)
     elif text == "🎭 Выбрать категорию":
+        logger.info(f"🎭 Пользователь {user_id} выбрал категории")
         await update.message.reply_text(
             "Выбери категорию события:",
             reply_markup=get_categories_keyboard()
@@ -81,15 +91,25 @@ async def handle_message(update: Update, context: CallbackContext):
 async def handle_random_event(update: Update, context: CallbackContext):
     """Отправляет случайное событие"""
     global events_cache
+    user_id = update.effective_user.id
+    
+    logger.info(f"🔍 Обработка случайного события для {user_id}")
+    logger.info(f"📊 Размер кеша: {len(events_cache)}")
     
     # Если кеш пуст, загружаем события
     if not events_cache:
+        logger.warning("⚠️ Кеш пуст, загружаю события...")
         await update.message.reply_text("🔍 Загружаю свежие события... Подожди секунду!")
         await preload_events()
     
     if not events_cache:
+        logger.error("❌ Кеш остался пустым после загрузки")
         await update.message.reply_text(
-            "😔 Не удалось загрузить события. Попробуй позже!",
+            "😔 Не удалось загрузить события. Попробуй позже!\n\n"
+            "Возможные причины:\n"
+            "- Нет интернета\n"
+            "- API KudaGo временно недоступен\n"
+            "- Попробуй через минуту",
             reply_markup=get_main_keyboard()
         )
         return
@@ -97,6 +117,7 @@ async def handle_random_event(update: Update, context: CallbackContext):
     # Выбираем случайное событие
     event = events_loader.get_random_event(events_cache)
     if event:
+        logger.info(f"✅ Найдено событие: {event.get('title', 'Без названия')}")
         message = events_loader.format_event_message(event)
         await update.message.reply_text(
             message,
@@ -105,15 +126,22 @@ async def handle_random_event(update: Update, context: CallbackContext):
             reply_markup=get_main_keyboard()
         )
     else:
-        await update.message.reply_text("😔 Не нашлось подходящих событий :(", reply_markup=get_main_keyboard())
+        logger.error("❌ Не удалось получить случайное событие из кеша")
+        await update.message.reply_text(
+            "😔 Не нашлось подходящих событий :(\n"
+            "Попробуй выбрать категорию или нажми позже",
+            reply_markup=get_main_keyboard()
+        )
 
 async def handle_category_selection(update: Update, context: CallbackContext):
     """Обрабатывает выбор категории (callback query)"""
     query = update.callback_query
+    user_id = query.from_user.id
     await query.answer()
     
     callback_data = query.data
     category_code = callback_data.replace("cat_", "")
+    logger.info(f"📂 Пользователь {user_id} выбрал категорию: {category_code}")
     
     if category_code == "all":
         events = await events_loader.load_events()
@@ -128,6 +156,8 @@ async def handle_category_selection(update: Update, context: CallbackContext):
             "lecture": "лекции"
         }
         category_name = category_names.get(category_code, "выбранной категории")
+    
+    logger.info(f"📊 Найдено {len(events)} событий в категории {category_name}")
     
     if not events:
         await query.edit_message_text(f"😔 Не удалось найти события в категории {category_name}. Попробуй позже!")
@@ -147,7 +177,7 @@ async def handle_category_selection(update: Update, context: CallbackContext):
             message,
             parse_mode='Markdown',
             disable_web_page_preview=True,
-            reply_markup=get_main_keyboard()  # ИСПРАВЛЕНО: было get_main_keyword()
+            reply_markup=get_main_keyboard()
         )
     else:
         await query.message.reply_text("😔 Не нашлось событий :(", reply_markup=get_main_keyboard())
