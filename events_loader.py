@@ -93,12 +93,13 @@ def format_event_message(event: Dict) -> str:
     )
     return message
 
+# В events_loader.py, исправь функцию get_random_event:
+
 def get_random_event(events: List[Dict]) -> Optional[Dict]:
     """Возвращает случайное событие из списка"""
     if not events:
         return None
-    import random  # уже будет в начале файла
-    return random.choice(events)
+    return random.choice(events)  # random уже импортирован в начале файла
 
 async def load_events(categories: List[str] = None) -> List[Dict]:
     """
