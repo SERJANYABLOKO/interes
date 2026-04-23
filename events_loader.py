@@ -13,32 +13,26 @@ logger = logging.getLogger(__name__)
 EVENTS_CACHE_FILE = "events.json"
 CACHE_EXPIRY_HOURS = 6
 
+# Добавь эту константу в начало файла (после импортов)
+YEAR_2026_START = datetime(2026, 1, 1).timestamp()
+
 def is_event_upcoming(event: Dict) -> bool:
     """
-    Проверяет, является ли событие будущим или текущим
-    Возвращает True, если событие еще не закончилось
+    Проверяет, является ли событие актуальным (после 2026 года).
+    Возвращает True, если событие начинается 1 января 2026 или позже.
     """
     dates = event.get("dates", [])
     if not dates:
         return False
     
-    # Получаем текущее время в UTC (API KudaGo возвращает timestamp в UTC)
-    now = datetime.now().timestamp()
+    # Берем первую дату в списке (обычно основная дата события)
+    first_date = dates[0]
+    start_timestamp = first_date.get("start", 0)
     
-    for date_range in dates:
-        start = date_range.get("start", 0)
-        end = date_range.get("end", 0)
+    # Если дата начала указана и она больше или равна 01.01.2026
+    if start_timestamp and start_timestamp >= YEAR_2026_START:
+        return True
         
-        # Если есть дата окончания и она еще не прошла
-        if end and end > now:
-            return True
-        # Если нет даты окончания, но дата начала еще не прошла
-        elif not end and start and start > now:
-            return True
-        # Если событие уже началось, но еще не закончилось
-        elif start and start <= now and (not end or end > now):
-            return True
-    
     return False
 
 def get_event_date_str(event: Dict) -> str:
