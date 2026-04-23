@@ -46,6 +46,15 @@ def get_categories_keyboard():
 # Обработчики команд
 # ======================
 
+async def error_handler(update: Update, context: CallbackContext):
+    """Логирует ошибки"""
+    logger.error(f"Exception while handling an update: {context.error}")
+    # Если нужно, можешь отправить сообщение пользователю
+    if update and update.effective_message:
+        await update.effective_message.reply_text(
+            "😔 Произошла ошибка. Пожалуйста, попробуй позже!"
+        )
+
 async def start_command(update: Update, context: CallbackContext):
     """Приветствие и главное меню"""
     logger.info(f"📱 Пользователь {update.effective_user.id} вызвал /start")
