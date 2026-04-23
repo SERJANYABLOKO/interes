@@ -1,6 +1,6 @@
-# 📁 events_loader.py
+# 📁 events_loader.py (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 # Модуль для загрузки событий из API KudaGo (Москва)
-import random  # добавь эту строку в начало файла
+import random
 import aiohttp
 import json
 import asyncio
@@ -24,7 +24,7 @@ async def fetch_events_from_api(categories: List[str] = None) -> List[Dict]:
         "location": "msk",  # Москва
         "page_size": 100,   # Загружаем до 100 событий за раз
         "actual_since": datetime.now().strftime("%Y-%m-%d"),
-        "fields": "id,title,place,description,dates,images,categories,price,site_url"
+        "fields": "id,title,place,description,dates,images,categories,price,site_url,age_restriction"
     }
     
     if categories:
@@ -72,34 +72,56 @@ def format_event_message(event: Dict) -> str:
     
     # Описание (обрезаем до 200 символов)
     description = event.get("description", "")
-    if len(description) > 200:
-        description = description[:200] + "..."
+    if description:
+        if len(description) > 200:
+            description = description[:200] + "..."
+    else:
+        description = "Описание отсутствует"
     
-    # Категория
+    # КАТЕГОРИЯ - ИСПРАВЛЕНО! Теперь обрабатываем как список строк
     categories = event.get("categories", [])
-    category_names = [cat.get("name", "") for cat in categories if cat.get("name")]
-    category_str = " / ".join(category_names) if category_names else "Событие"
+    if categories and isinstance(categories, list):
+        # API может вернуть и строки, и словари
+        category_names = []
+        for cat in categories:
+            if isinstance(cat, dict):
+                category_names.append(cat.get("name", ""))
+            elif isinstance(cat, str):
+                category_names.append(cat)
+        category_str = " / ".join([c for c in category_names if c]) if category_names else "Событие"
+    else:
+        category_str = "Событие"
+    
+    # Возрастное ограничение
+    age_restriction = event.get("age_restriction", "")
+    age_str = f"🔞 {age_restriction}+" if age_restriction else ""
     
     # Ссылка
     site_url = event.get("site_url", "")
     
-    message = (
-        f"🎉 *{title}*\n\n"
-        f"📅 {date_str}\n"
-        f"📍 {place_name}\n"
-        f"{price_str}\n\n"
-        f"📝 {description}\n\n"
-        f"🔗 [Подробнее]({site_url})"
-    )
-    return message
-
-# В events_loader.py, исправь функцию get_random_event:
+    # Формируем сообщение
+    message_parts = [
+        f"🎉 *{title}*",
+        f"📅 {date_str}",
+        f"📍 {place_name}",
+        f"{price_str}"
+    ]
+    
+    if age_str:
+        message_parts.append(age_str)
+    
+    message_parts.append(f"\n📝 {description}")
+    
+    if site_url:
+        message_parts.append(f"\n🔗 [Подробнее]({site_url})")
+    
+    return "\n".join(message_parts)
 
 def get_random_event(events: List[Dict]) -> Optional[Dict]:
     """Возвращает случайное событие из списка"""
     if not events:
         return None
-    return random.choice(events)  # random уже импортирован в начале файла
+    return random.choice(events)
 
 async def load_events(categories: List[str] = None) -> List[Dict]:
     """
@@ -120,14 +142,15 @@ async def load_events(categories: List[str] = None) -> List[Dict]:
     events = await fetch_events_from_api(categories)
     
     # Сохраняем в кеш
-    try:
-        with open(EVENTS_CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump({
-                "timestamp": datetime.now().isoformat(),
-                "events": events
-            }, f, ensure_ascii=False, indent=2)
-        logger.info("Кеш сохранен")
-    except Exception as e:
-        logger.error(f"Не удалось сохранить кеш: {e}")
+    if events:
+        try:
+            with open(EVENTS_CACHE_FILE, "w", encoding="utf-8") as f:
+                json.dump({
+                    "timestamp": datetime.now().isoformat(),
+                    "events": events
+                }, f, ensure_ascii=False, indent=2)
+            logger.info("Кеш сохранен")
+        except Exception as e:
+            logger.error(f"Не удалось сохранить кеш: {e}")
     
     return events
